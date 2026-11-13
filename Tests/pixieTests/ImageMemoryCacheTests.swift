@@ -423,6 +423,92 @@ struct LimitTests {
         #expect(cache.value(for: "k") === probe)
     }
 
+    @Test("Объект со стоимостью, равной totalCostLimit, читается")
+    func objectCostEqualToTotalCostLimitIsReadable() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 64, countLimit: 4)
+        let probe = Probe(id: 1)
+        cache.set(probe, for: "k", cost: 64)
+        #expect(cache.value(for: "k") === probe)
+    }
+
+    @Test("Сумма стоимостей, равная totalCostLimit, читается целиком")
+    func costsSummingToTheLimitStayReadable() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 10, countLimit: 5)
+        let left = Probe(id: 1)
+        let right = Probe(id: 2)
+        cache.set(left, for: "a", cost: 4)
+        cache.set(right, for: "b", cost: 6)
+        #expect(cache.value(for: "a") === left)
+        #expect(cache.value(for: "b") === right)
+    }
+
+    @Test("Число объектов, равное countLimit, читается сразу после записи")
+    func objectCountEqualToCountLimitIsReadable() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 100, countLimit: 3)
+        let probes = (0..<3).map { Probe(id: $0) }
+        for (index, probe) in probes.enumerated() {
+            cache.set(probe, for: "\(index)", cost: 1)
+        }
+        for (index, probe) in probes.enumerated() {
+            #expect(cache.value(for: "\(index)") === probe)
+        }
+    }
+
+    @Test("Повторная запись уменьшает стоимость и освобождает бюджет")
+    func replacingEntryWithLowerCostFreesBudget() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 10, countLimit: 10)
+        cache.set(Probe(id: 1), for: "a", cost: 10)
+        let cheaper = Probe(id: 2)
+        cache.set(cheaper, for: "a", cost: 1)
+        let other = Probe(id: 3)
+        cache.set(other, for: "b", cost: 9)
+        #expect(cache.value(for: "a") === cheaper)
+        #expect(cache.value(for: "b") === other)
+    }
+
+    @Test("Повторная запись того же ключа не занимает второй слот countLimit")
+    func replacementDoesNotConsumeAnotherCountSlot() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 10_000, countLimit: 2)
+        cache.set(Probe(id: 1), for: "a", cost: 1)
+        cache.set(Probe(id: 2), for: "a", cost: 1)
+        let latest = Probe(id: 3)
+        cache.set(latest, for: "a", cost: 1)
+        let other = Probe(id: 4)
+        cache.set(other, for: "b", cost: 1)
+        #expect(cache.value(for: "a") === latest)
+        #expect(cache.value(for: "b") === other)
+    }
+
+    @Test("Нулевая стоимость не вытесняет запись на весь бюджет")
+    func zeroCostEntriesDoNotEvictAFullBudgetEntry() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 10, countLimit: 50)
+        let full = Probe(id: 1)
+        cache.set(full, for: "full", cost: 10)
+        let zeros = (0..<20).map { Probe(id: $0 + 2) }
+        for (index, probe) in zeros.enumerated() {
+            cache.set(probe, for: "z\(index)", cost: 0)
+        }
+        #expect(cache.value(for: "full") === full)
+        for (index, probe) in zeros.enumerated() {
+            #expect(cache.value(for: "z\(index)") === probe)
+        }
+    }
+
+    @Test("Лимиты сохраняются после очистки")
+    func limitsRemainAfterRemoveAll() {
+        let cache = MemoryCache<Probe>(totalCostLimit: 30, countLimit: 3)
+        cache.set(Probe(id: 1), for: "old", cost: 30)
+        cache.removeAll()
+        let probes = (0..<3).map { Probe(id: $0) }
+        for (index, probe) in probes.enumerated() {
+            cache.set(probe, for: "n\(index)", cost: 10)
+        }
+        #expect(cache.value(for: "old") == nil)
+        for (index, probe) in probes.enumerated() {
+            #expect(cache.value(for: "n\(index)") === probe)
+        }
+    }
+
     @Test("Превышение лимита не падает и не возвращает чужой объект")
     func exceedingLimitsReturnsStoredInstanceOrNil() {
         // NSCache может вытеснить запись сразу или оставить её.

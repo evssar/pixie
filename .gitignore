@@ -71,3 +71,6 @@ iOSInjectionProject/
 # Signing secrets
 *.mobileprovision
 *.p12
+
+# Cursor
+.cursor/
